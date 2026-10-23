@@ -5,6 +5,7 @@ import checkDiskSpace from 'check-disk-space'
 import { ChartProvider, MBTilesHandle } from './types'
 import { lonLatToMercator, tileToBBox } from './projection'
 import { exportMbtilesPath, EXPORTS_DIR } from './cacheLayout'
+import { proxyManager } from './proxy'
 
 // All DB-touching helpers (delete / purge / vacuum / region-tile listing) need
 // the raw node:sqlite handle exposed by @signalk/mbtiles. Reaching through
@@ -732,10 +733,17 @@ export class ChartDownloader {
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
       try {
-        const response = await fetch(url, {
-          headers: provider.headers,
-          signal: controller.signal
-        })
+        const response = await proxyManager.fetch(
+          url,
+          {
+            headers: provider.headers,
+            signal: controller.signal
+          },
+          {
+            useProxy: provider.useProxy === true,
+            providerId: provider.identifier
+          }
+        )
         // Clear the abort timer as soon as the response head is in. A long
         // body read was otherwise racing the timeout and could be aborted
         // mid-stream while the caller waited on arrayBuffer().

@@ -25,6 +25,7 @@ import {
   migrateLegacyTileCache,
   workingMbtilesPath
 } from './cacheLayout'
+import { proxyManager } from './proxy'
 import {
   MAX_ZOOM,
   MIN_ZOOM,
@@ -47,6 +48,13 @@ interface Config {
   chartPaths: string[]
   cachePath: string
   onlineChartProviders: OnlineChartProvider[]
+  // Plugin-wide HTTP proxy for opt-in server-side provider requests.
+  proxyUrl?: string
+  // Run proxyReinitScript every N proxied requests; 0 disables.
+  proxyReinitEvery?: number
+  // Optional JavaScript body run to rotate/reinitialize the proxy. It receives
+  // { requestCount, proxyUrl, providerId } and may return a new proxy URL.
+  proxyReinitScript?: string
   // Declarative token-based providers: token-endpoint + tile-template
   // configs that resolve at fetch time.
   tokenProviders?: TokenProviderConfig[]
@@ -199,6 +207,33 @@ const createPlugin = (app: ChartProviderApp): Plugin => {
         title: 'Cache path',
         description: `Directory for cached tiles. Defaults to "${defaultChartsPath}"`
       },
+      proxyUrl: {
+        type: 'string',
+        title: 'Global proxy URL',
+        description:
+          'Optional HTTP/HTTPS proxy used by sources that opt in below, ' +
+          'e.g. "http://host:8080" or "http://user:pass@host:8080". ' +
+          'Only server-side tile and token requests use this proxy.'
+      },
+      proxyReinitEvery: {
+        type: 'integer',
+        title: 'Reinitialize proxy every N proxied requests',
+        minimum: 0,
+        default: 0,
+        description:
+          'Run the reinitialization script every N requests made through ' +
+          'the global proxy. 0 disables automatic reinitialization.'
+      },
+      proxyReinitScript: {
+        type: 'string',
+        title: 'Proxy reinitialization script',
+        default: '',
+        description:
+          'JavaScript function body executed after every N proxied ' +
+          'requests. It receives { requestCount, proxyUrl, providerId } ' +
+          'and may return a new proxy URL string; return nothing to keep ' +
+          'the configured URL and just rebuild the proxy connection.'
+      },
       onlineChartProviders: {
         type: 'array',
         title: 'Online chart providers',
@@ -265,6 +300,15 @@ const createPlugin = (app: ChartProviderApp): Plugin => {
                 'Create a proxy to serve remote tiles and cache fetched tiles from the remote server, to serve them locally on subsequent requests. Use webapp to configure seeding jobs to prefetch tiles to local cache. Only meaningful for tilelayer / WMS / WMTS providers; mapstyleJSON and tileJSON providers describe style/source manifests and have no per-tile cache to seed.',
               default: false
             },
+            useProxy: {
+              type: 'boolean',
+              title: 'Use global proxy',
+              description:
+                'Route this source’s server-side tile and token requests ' +
+                'through the plugin-wide proxy. Only applies when “Proxy ' +
+                'through signalk server” is enabled.',
+              default: false
+            },
             headers: {
               type: 'array',
               title: 'Headers',
@@ -295,6 +339,23 @@ const createPlugin = (app: ChartProviderApp): Plugin => {
                   'Map layer id to display (use with WMS / WMTS types).',
                 type: 'string'
               }
+            }
+          },
+          dependencies: {
+            proxy: {
+              oneOf: [
+                {
+                  properties: {
+                    proxy: { const: false },
+                    useProxy: { readOnly: true }
+                  }
+                },
+                {
+                  properties: {
+                    proxy: { const: true }
+                  }
+                }
+              ]
             }
           }
         }
@@ -356,6 +417,14 @@ const createPlugin = (app: ChartProviderApp): Plugin => {
               minItems: 4,
               maxItems: 4
             },
+            useProxy: {
+              type: 'boolean',
+              title: 'Use global proxy',
+              description:
+                'Route this provider’s server-side token and tile requests ' +
+                'through the plugin-wide proxy.',
+              default: false
+            },
             tokenEndpoint: {
               type: 'object',
               title: 'Token endpoint',
@@ -409,7 +478,12 @@ const createPlugin = (app: ChartProviderApp): Plugin => {
     }
   })
 
-  const CONFIG_UISCHEMA = {}
+  const CONFIG_UISCHEMA = {
+    proxyReinitScript: {
+      'ui:widget': 'textarea',
+      'ui:options': { rows: 8 }
+    }
+  }
 
   const plugin: Plugin = {
     id: 'charts',
@@ -434,6 +508,7 @@ const createPlugin = (app: ChartProviderApp): Plugin => {
       // Cancel any running seeding jobs so a disabled plugin doesn't keep
       // pulling tiles from remote providers in the background.
       ChartSeedingManager.cancelAll()
+      proxyManager.shutdown()
       // Cancel any in-flight legacy migration. Without this, the walk
       // keeps calling putTile against a handle we're about to close —
       // every call errors-and-counts-as-failed for thousands of remaining
@@ -473,6 +548,14 @@ const createPlugin = (app: ChartProviderApp): Plugin => {
     app.debug(`** loaded config: ${config}`)
     props = { ...config }
     ChartDownloader.setDebugLogger((message) => app.debug(message))
+    proxyManager.configure(
+      {
+        proxyUrl: props.proxyUrl,
+        reinitEvery: props.proxyReinitEvery,
+        reinitScript: props.proxyReinitScript
+      },
+      (message) => app.debug(message)
+    )
 
     urlBase = `${app.config.ssl ? 'https' : 'http'}://localhost:${
       'getExternalPort' in app.config ? app.config.getExternalPort() : 3000
@@ -1439,6 +1522,7 @@ const convertOnlineProviderConfig = (provider: OnlineChartProvider) => {
       layers: provider.layers ? provider.layers : null
     },
     proxy: provider.proxy ? provider.proxy : false,
+    useProxy: provider.proxy === true && provider.useProxy === true,
     remoteUrl: provider.proxy ? provider.url : null,
     headers: parseHeaders(provider.headers)
   }
