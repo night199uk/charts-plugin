@@ -94,6 +94,9 @@ export interface ChartProvider {
   style?: string
   layers?: string[]
   proxy?: boolean
+  // Route this provider's server-side fetches through the plugin-wide HTTP
+  // proxy. Only meaningful when proxy is true.
+  useProxy?: boolean
   remoteUrl?: string
   headers?: { [key: string]: string }
 }
@@ -107,6 +110,9 @@ export interface OnlineChartProvider {
   format: 'png' | 'jpg'
   url: string
   proxy: boolean
+  // Only used when proxy is true; server-side fetches for this source go
+  // through the plugin-wide proxy.
+  useProxy?: boolean
   headers?: string[]
   style: string
   layers: string[]
@@ -127,6 +133,9 @@ export interface TokenProviderConfig {
   minzoom?: number
   maxzoom?: number
   bounds?: number[]
+  // Route this provider's tile and token fetches through the plugin-wide
+  // HTTP proxy.
+  useProxy?: boolean
   // Endpoint that returns a JSON object whose string-valued fields become
   // available as `{token.<field>}` placeholders in tile.url / tile.headers.
   // ttlSeconds bounds how long a token is reused before re-fetching.

@@ -54,7 +54,8 @@
     "fast-xml-parser": "^5.7.1",
     "geojson-antimeridian-cut": "^0.1.0",
     "lodash": "^4.17.11",
-    "p-limit": "^7"
+    "p-limit": "^7",
+    "undici": "^8.12.3"
   },
   "repository": {
     "type": "git",

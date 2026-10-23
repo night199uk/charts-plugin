@@ -14,6 +14,7 @@
  */
 
 import type { ServerAPI } from '@signalk/server-api'
+import { proxyManager } from './proxy'
 import { ChartProvider, TokenProviderConfig } from './types'
 
 // Random-range placeholder used for sharded tile hostnames like
@@ -117,12 +118,19 @@ export class TokenProvider {
     const timer = setTimeout(() => controller.abort(), timeoutMs)
     let res: Response
     try {
-      res = await fetch(url, {
-        method,
-        headers: ep.headers,
-        body: ep.body,
-        signal: controller.signal
-      })
+      res = await proxyManager.fetch(
+        url,
+        {
+          method,
+          headers: ep.headers,
+          body: ep.body,
+          signal: controller.signal
+        },
+        {
+          useProxy: this.config.useProxy === true,
+          providerId: this.config.identifier
+        }
+      )
     } finally {
       clearTimeout(timer)
     }
@@ -234,6 +242,7 @@ export function chartProviderFromTokenConfig(
     type: cfg.type ?? 'tilelayer',
     scale: cfg.scale ?? 250000,
     proxy: true,
+    useProxy: cfg.useProxy === true,
     _filePath: '',
     _tokenProvider: tp
   }
