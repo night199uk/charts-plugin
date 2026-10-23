@@ -201,6 +201,21 @@ describe('TokenProvider: token TTL cache', () => {
     }
   })
 
+  it('refreshForProxyChange invalidates and refetches the token', async () => {
+    const mock = installFetchMock(() => jsonResponse({ access: 'abc' }))
+    try {
+      const dp = makeTokenProvider({ ...BASE_CONFIG })
+      await dp.ensureFreshToken()
+      expect(mock.calls.length).to.equal(1)
+
+      await dp.refreshForProxyChange()
+
+      expect(mock.calls.length).to.equal(2)
+    } finally {
+      mock.restore()
+    }
+  })
+
   it('invalidateToken forces the next call to refetch', async () => {
     const mock = installFetchMock(() => jsonResponse({ access: 'abc' }))
     try {

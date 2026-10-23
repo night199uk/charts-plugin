@@ -73,6 +73,7 @@ export interface ChartProvider {
   _tokenProvider?: {
     ensureFreshToken: () => Promise<void>
     invalidateToken: () => void
+    refreshForProxyChange?: () => Promise<void>
   }
   identifier: string
   name: string

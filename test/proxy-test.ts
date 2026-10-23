@@ -120,6 +120,33 @@ describe('ProxyManager', () => {
     }
   })
 
+  it('calls the reinitialized callback after rebuilding the proxy', async () => {
+    const urls: string[] = []
+    const proxied = makeProxiedFetchMock()
+    const manager = new ProxyManager(
+      (url) => makeDispatcher(url, urls),
+      proxied.fn
+    )
+    let callbacks = 0
+    try {
+      manager.configure(
+        {
+          proxyUrl: 'http://proxy-a:8080',
+          reinitEvery: 1,
+          reinitScript: "return 'http://proxy-b:8080'"
+        },
+        () => {},
+        () => {
+          callbacks++
+        }
+      )
+      await manager.fetch('https://example.com/1', {}, { useProxy: true })
+      expect(callbacks).to.equal(1)
+    } finally {
+      manager.shutdown()
+    }
+  })
+
   it('keeps the current proxy when the reinit script fails', async () => {
     const urls: string[] = []
     const logs: string[] = []

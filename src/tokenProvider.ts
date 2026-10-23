@@ -184,6 +184,25 @@ export class TokenProvider {
     this.tokenExpiry = 0
   }
 
+  /**
+   * Force a token refresh after the proxy has changed. Invalidate first so
+   * concurrent callers don't keep using the old token, then wait for any
+   * in-flight token fetch to finish (it may have used the old proxy) and
+   * refresh once through the new proxy.
+   */
+  async refreshForProxyChange(): Promise<void> {
+    this.invalidateToken()
+    if (this.inFlight) {
+      try {
+        await this.inFlight
+      } catch {
+        // ensureFreshToken already logs token-fetch failures.
+      }
+      this.invalidateToken()
+    }
+    await this.ensureFreshToken()
+  }
+
   /** Templated tile URL with the current token and any range placeholders. */
   resolveUrl(): string {
     return this.applyTemplates(this.config.tile.url)
