@@ -554,7 +554,29 @@ const createPlugin = (app: ChartProviderApp): Plugin => {
         reinitEvery: props.proxyReinitEvery,
         reinitScript: props.proxyReinitScript
       },
-      (message) => app.debug(message)
+      (message) => app.debug(message),
+      () => {
+        const tokenProviders = Object.values(activeTokenProviders).filter(
+          (provider) => provider._tokenProvider
+        )
+        for (const provider of tokenProviders) {
+          provider._tokenProvider?.invalidateToken()
+        }
+        if (tokenProviders.length > 0) {
+          app.debug(
+            `proxy reinitialized; invalidating ${tokenProviders.length} ` +
+              `token provider(s)`
+          )
+        }
+        // Refresh outside the proxy reinit promise: a token fetch may itself
+        // be the request that triggered the reinit, and awaiting it here would
+        // deadlock. refreshForProxyChange waits for any in-flight fetch first.
+        setImmediate(() => {
+          for (const provider of tokenProviders) {
+            void provider._tokenProvider?.refreshForProxyChange?.()
+          }
+        })
+      }
     )
 
     urlBase = `${app.config.ssl ? 'https' : 'http'}://localhost:${

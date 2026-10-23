@@ -55,6 +55,7 @@ export class ProxyManager {
   private reinitEvery = 0
   private reinitScript = ''
   private logger: ProxyLogger = () => {}
+  private onReinitialized: (() => void) | undefined
   private dispatcher: Dispatcher | undefined
   private requestCount = 0
   private reinitInFlight: Promise<void> | null = null
@@ -66,7 +67,11 @@ export class ProxyManager {
     private readonly proxiedFetch: ProxiedFetch = defaultProxiedFetch
   ) {}
 
-  configure(config: ProxyConfig, logger: ProxyLogger): void {
+  configure(
+    config: ProxyConfig,
+    logger: ProxyLogger,
+    onReinitialized?: () => void
+  ): void {
     const url = (config.proxyUrl ?? '').trim()
     const every = Number(config.reinitEvery)
     this.proxyUrl = url
@@ -74,6 +79,7 @@ export class ProxyManager {
       Number.isFinite(every) && every > 0 ? Math.floor(every) : 0
     this.reinitScript = (config.reinitScript ?? '').trim()
     this.logger = logger
+    this.onReinitialized = onReinitialized
     this.requestCount = 0
     this.warnedNoUrl = false
     this.swapDispatcher(url)
@@ -93,6 +99,7 @@ export class ProxyManager {
     this.proxyUrl = ''
     this.reinitEvery = 0
     this.reinitScript = ''
+    this.onReinitialized = undefined
     this.requestCount = 0
     this.reinitInFlight = null
     const old = this.dispatcher
@@ -167,6 +174,7 @@ export class ProxyManager {
         `requestCount=${this.requestCount} url=${redactProxyUrl(nextUrl)}`
     )
     this.swapDispatcher(nextUrl)
+    this.onReinitialized?.()
   }
 
   private swapDispatcher(nextUrl: string): void {
